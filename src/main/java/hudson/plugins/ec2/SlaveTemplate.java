@@ -83,14 +83,16 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     private final List<EC2Tag> tags;
     public final boolean usePrivateDnsName;
     protected transient EC2Cloud parent;
-
+    private final boolean windowsSlave;
+    private final String adminPassword;
+    
     public int launchTimeout;
 
     private transient /*almost final*/ Set<LabelAtom> labelSet;
 	private transient /*almost final*/ Set<String> securityGroupSet;
 
     @DataBoundConstructor
-    public SlaveTemplate(String ami, String zone, SpotConfiguration spotConfig, String securityGroups, String remoteFS, String sshPort, InstanceType type, String labelString, Node.Mode mode, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate, String subnetId, List<EC2Tag> tags, String idleTerminationMinutes, boolean usePrivateDnsName, String instanceCapStr, String iamInstanceProfile, boolean useEphemeralDevices, String launchTimeoutStr) {
+    public SlaveTemplate(String ami, String zone, SpotConfiguration spotConfig, String securityGroups, String remoteFS, String sshPort, InstanceType type, String labelString, Node.Mode mode, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate, String subnetId, List<EC2Tag> tags, String idleTerminationMinutes, boolean usePrivateDnsName, String instanceCapStr, String iamInstanceProfile, boolean useEphemeralDevices, String launchTimeoutStr, boolean windowsSlave, String adminPassword) {
         this.ami = ami;
         this.zone = zone;
         this.spotConfig = spotConfig;
@@ -112,6 +114,8 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         this.tags = tags;
         this.idleTerminationMinutes = idleTerminationMinutes;
         this.usePrivateDnsName = usePrivateDnsName;
+        this.adminPassword = adminPassword;
+        this.windowsSlave = windowsSlave;
 
         if (null == instanceCapStr || instanceCapStr.equals("")) {
             this.instanceCap = Integer.MAX_VALUE;
@@ -556,11 +560,11 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 	}
 
     protected EC2OndemandSlave newOndemandSlave(Instance inst) throws FormException, IOException {
-        return new EC2OndemandSlave(inst.getInstanceId(), description, remoteFS, getSshPort(), getNumExecutors(), labels, mode, initScript, remoteAdmin, rootCommandPrefix, jvmopts, stopOnTerminate, idleTerminationMinutes, inst.getPublicDnsName(), inst.getPrivateDnsName(), EC2Tag.fromAmazonTags(inst.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout());
+        return new EC2OndemandSlave(inst.getInstanceId(), description, remoteFS, getSshPort(), getNumExecutors(), labels, mode, initScript, remoteAdmin, rootCommandPrefix, jvmopts, stopOnTerminate, idleTerminationMinutes, inst.getPublicDnsName(), inst.getPrivateDnsName(), EC2Tag.fromAmazonTags(inst.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout(), isWindowsSlave(), getAdminPassword() );
     }
 
     protected EC2SpotSlave newSpotSlave(SpotInstanceRequest sir, String name) throws FormException, IOException {
-        return new EC2SpotSlave(name, sir.getSpotInstanceRequestId(), description, remoteFS, getSshPort(), getNumExecutors(), mode, initScript, labels, remoteAdmin, rootCommandPrefix, jvmopts, idleTerminationMinutes, EC2Tag.fromAmazonTags(sir.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout());
+        return new EC2SpotSlave(name, sir.getSpotInstanceRequestId(), description, remoteFS, getSshPort(), getNumExecutors(), mode, initScript, labels, remoteAdmin, rootCommandPrefix, jvmopts, idleTerminationMinutes, EC2Tag.fromAmazonTags(sir.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout(), isWindowsSlave(), getAdminPassword());
     }
 
     /**
@@ -673,6 +677,22 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         } else {
             return String.valueOf(launchTimeout);
         }
+    }
+
+    /**
+     * @return the windowsSlave
+     */
+    public boolean isWindowsSlave()
+    {
+      return windowsSlave;
+    }
+
+    /**
+     * @return the adminPassword
+     */
+    public String getAdminPassword()
+    {
+      return adminPassword;
     }
 
     @Extension

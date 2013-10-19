@@ -146,6 +146,14 @@ THE SOFTWARE.
       <f:textbox />
     </f:entry>
 
+    <f:entry title="${%Windows Slave}" field="windowsSlave">
+      <f:checkbox />
+    </f:entry>
+
+    <f:entry title="${%Windows Admin Password}" field="adminPassword">
+      <f:password />
+    </f:entry>
+
   </f:advanced>
 
   <f:entry title="">
