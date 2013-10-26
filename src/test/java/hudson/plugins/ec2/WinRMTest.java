@@ -2,6 +2,10 @@ package hudson.plugins.ec2;
 
 import static org.junit.Assert.assertEquals;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -9,6 +13,7 @@ import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.concurrent.CountDownLatch;
 
+import org.bouncycastle.util.Arrays;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -17,11 +22,13 @@ import com.google.common.io.LineReader;
 import hudson.plugins.ec2.win.WinConnection;
 import hudson.plugins.ec2.win.winrm.WinRM;
 import hudson.plugins.ec2.win.winrm.WindowsProcess;
+import hudson.util.IOUtils;
 
 public class WinRMTest
 {
 
   @Test
+  @Ignore
   public void testWinRMPutFile() throws Exception
   {
     WinConnection client = new WinConnection("54.224.70.22", "Administrator", "InUrIrb0Slurbart");
@@ -38,10 +45,13 @@ public class WinRMTest
     in.close();
   }
 
+  
+
   @Test
+  @Ignore
   public void testWinRMcommand()
   {
-    WinRM client = new WinRM("54.224.70.22", "Administrator", "InUrIrb0Slurbart");
+    WinRM client = new WinRM("54.242.48.225", "Administrator", "InUrIrb0Slurbart");
 
     WindowsProcess process = client.execute("winrm get winrm/config");
 
@@ -118,6 +128,35 @@ public class WinRMTest
         }
       }
     };
+  }
+
+  
+  @Test
+  public void testWinRMInOutBinary() throws IOException
+  {
+	  WinConnection client = new WinConnection("54.205.168.24", "Administrator", "InUrIrb0Slurbart");
+//	    OutputStream out = client.putFile("C:\\Windows\\Temp\\echo.jar");
+//	    IOUtils.copy(new File("/home/brice/devl/ec2-plugin/echo.jar"), out);
+//	    out.flush();
+//	    out.close();
+//	    
+//	    System.out.println("echo.jar sent");
+	    
+	    WindowsProcess process = client.execute("java -jar C:\\Windows\\Temp\\echo.jar");
+	    try {
+	    BufferedOutputStream stdin = new BufferedOutputStream(process.getStdin());
+	    BufferedInputStream stdout = new BufferedInputStream(process.getStdout());
+	    stdin.write(new byte[] { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36 });
+	    stdin.flush();
+      System.out.println("wrote 6 bytes");
+	    
+	    byte[] input = new byte[1024];
+	    int n = stdout.read(input, 0, 6);
+	    System.out.println("read: " + n);
+	    assert(Arrays.areEqual(input, new byte[] { 0x31, 0x32, 0x33, 0x34, 0x35, 0x36 }));
+	    } finally {
+	    	process.destroy();
+	    }
   }
 
 }

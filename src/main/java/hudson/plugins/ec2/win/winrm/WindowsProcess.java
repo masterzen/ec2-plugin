@@ -42,6 +42,10 @@ public class WindowsProcess
     callersStderr = new PipedInputStream();
     toCallersStderr = new PipedOutputStream(callersStderr);
     startStdoutCopyThread();
+    try {
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+    }
     startStdinCopyThread();
   }
 

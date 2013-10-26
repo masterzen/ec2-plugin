@@ -36,6 +36,7 @@ import org.dom4j.DocumentHelper;
 import org.dom4j.Element;
 import org.dom4j.QName;
 import org.dom4j.XPath;
+import org.jaxen.SimpleNamespaceContext;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -56,6 +57,8 @@ public class WinRMClient
   private String commandId;
   private int exitCode;
 
+  private SimpleNamespaceContext namespaceContext;
+
   public WinRMClient(URL url, String username, String password)
   {
     this.url = url;
@@ -65,7 +68,7 @@ public class WinRMClient
 
   public void openShell()
   {
-    log.log(Level.FINE, "opening winrm shell to: " + url);
+    log.log(Level.INFO, "opening winrm shell to: " + url);
     Document request = buildShellRequest();
     shellId = first(sendRequest(request), "//*[@Name='ShellId']");
     log.log(Level.FINER, "shellid: " + shellId);
@@ -73,7 +76,7 @@ public class WinRMClient
 
   public void executeCommand(String command)
   {
-    log.log(Level.FINE, "winrm execute on " + shellId + " command: " + command);
+    log.log(Level.INFO, "winrm execute on " + shellId + " command: " + command);
     Document request = buildExecuteCommandRequest(command);
     commandId = first(sendRequest(request), "//"+Namespaces.NS_WIN_SHELL.getPrefix()+":CommandId");
     log.log(Level.FINER, "winrm started execution on " + shellId + " commandId: " + commandId);
@@ -85,7 +88,7 @@ public class WinRMClient
       throw new IllegalStateException("no shell has been created");
     }
 
-    log.log(Level.FINE, "closing winrm shell " + shellId );
+    log.log(Level.INFO, "closing winrm shell " + shellId );
 
     Document request = buildDeleteShellRequest();
     sendRequest(request);
@@ -114,32 +117,34 @@ public class WinRMClient
 
   public boolean slurpOutput(PipedOutputStream stdout, PipedOutputStream stderr) throws IOException
   {
+    log.log(Level.INFO, "--> SlurpOutput");
     ImmutableMap<String, PipedOutputStream> streams = ImmutableMap.of("stdout", stdout, "stderr", stderr);
     
-    String oldTimeout = timeout;
-    timeout = "PT10S";
     Document request = buildGetOutputRequest();
-    timeout = oldTimeout;
     Document response = sendRequest(request);
 
     XPath xpath = DocumentHelper.createXPath("//"+Namespaces.NS_WIN_SHELL.getPrefix()+":Stream");
+    namespaceContext = new SimpleNamespaceContext();
+    namespaceContext.addNamespace(Namespaces.NS_WIN_SHELL.getPrefix(), Namespaces.NS_WIN_SHELL.getURI());
+    xpath.setNamespaceContext(namespaceContext);
 
     Base64 base64 = new Base64();
     for(Element e: (List<Element>)xpath.selectNodes(response)) {
       PipedOutputStream stream = streams.get(e.attribute("Name").getText().toLowerCase());
       final byte[] decode = base64.decode(e.getText());
-      log.log(Level.FINE, "piping " + decode.length + " bytes from " + e.attribute("Name").getText().toLowerCase());
+      log.log(Level.INFO, "piping " + decode.length + " bytes from " + e.attribute("Name").getText().toLowerCase());
 
       stream.write(decode);
     }
     
     XPath done = DocumentHelper.createXPath("//*[@State='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done']");
+    done.setNamespaceContext(namespaceContext);
     if (Iterables.isEmpty(done.selectNodes(response))) {
-      log.log(Level.FINE, "keep going baby!");
+      log.log(Level.INFO, "keep going baby!");
       return true;
     } else {
       exitCode = Integer.parseInt(first(response, "//"+Namespaces.NS_WIN_SHELL.getPrefix()+":ExitCode"));
-      log.log(Level.FINE, "no more output - command is now done - exit code: " + exitCode);
+      log.log(Level.INFO, "no more output - command is now done - exit code: " + exitCode);
     }
     return false;
   }
@@ -182,7 +187,7 @@ public class WinRMClient
 
       message.addHeader(header.build());
       Element body = DocumentHelper.createElement(QName.get("Send", Namespaces.NS_WIN_SHELL));
-      Base64 base64 = new Base64();
+      Base64 base64 = new Base64(0);
       body.addElement(QName.get("Stream", Namespaces.NS_WIN_SHELL)).addAttribute("Name", "stdin").addAttribute("CommandId", commandId).addText(base64.encodeToString(input));
       message.addBody(body);
       return message.build();
@@ -263,7 +268,7 @@ public class WinRMClient
             .maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
             .action(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command"))
             .resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId)
-            .options(ImmutableList.of(new Option("WINRS_CONSOLEMODE_STDIN", "TRUE")));
+            .options(ImmutableList.of(new Option("WINRS_CONSOLEMODE_STDIN", "FALSE")));
 
       message.addHeader(header.build());
       final Element body = DocumentHelper.createElement(QName.get("CommandLine", Namespaces.NS_WIN_SHELL));
@@ -314,8 +319,9 @@ public class WinRMClient
         // check for possible timeout
         
         if (response.getStatusLine().getStatusCode() == 500 && (responseEntity.getContentType() != null && entity.getContentType().getValue().startsWith("application/soap+xml"))) {
-          if (EntityUtils.toString(responseEntity).contains("TimedOut")) {
-            return DocumentHelper.parseText(EntityUtils.toString(responseEntity));
+          String respStr = EntityUtils.toString(responseEntity);
+          if (respStr.contains("TimedOut")) {
+            return DocumentHelper.parseText(respStr);
           }
         } else {
         
@@ -332,7 +338,7 @@ public class WinRMClient
 
       Document responseDocument = DocumentHelper.parseText(EntityUtils.toString(responseEntity));
 
-      log.log(Level.FINER, "Response:\n" + responseDocument.asXML());
+      log.log(Level.INFO, "Response:\n" + responseDocument.asXML());
       return responseDocument;
     } catch (URISyntaxException e) {
       throw new RuntimeException("Invalid WinRM URI " + url);
