@@ -1,10 +1,9 @@
-package hudson.plugins.ec2.ssh;
+package hudson.plugins.ec2.win;
 
 import hudson.model.Descriptor;
 import hudson.model.Hudson;
 import hudson.plugins.ec2.EC2Computer;
 import hudson.plugins.ec2.EC2ComputerLauncher;
-import hudson.plugins.ec2.win.WinConnection;
 import hudson.plugins.ec2.win.winrm.WindowsProcess;
 import hudson.remoting.Channel;
 import hudson.remoting.Channel.Listener;
@@ -82,13 +81,17 @@ public class EC2WindowsLauncher extends EC2ComputerLauncher
         logger.println("Connecting to " + host + "("+ip+") with WinRM as " + computer.getNode().remoteAdmin);
 
         WinConnection connection = new WinConnection(ip, computer.getNode().remoteAdmin, computer.getNode().adminPassword);
-        connection.ping();
-        
-        logger.println("Connected via Windows.");
+        if (!connection.ping()) {
+            logger.println("Waiting for WinRM to come up. Sleeping 10s.");
+            Thread.sleep(10000);
+        	continue;
+        }
+       
+        logger.println("Connected with WinRM.");
         return connection; // successfully connected
       } catch (IOException e) {
-        logger.println("Waiting for WinRM to come up. Sleeping 5.");
-        Thread.sleep(5000);
+        logger.println("Waiting for WinRM to come up. Sleeping 10s.");
+        Thread.sleep(10000);
       }
     }
   }

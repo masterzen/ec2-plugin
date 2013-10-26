@@ -14,6 +14,7 @@ public class WindowsProcess
 {
   private static final Logger log = Logger.getLogger(WindowsProcess.class.getName());
 
+  private final static int INPUT_BUFFER = 256 * 1024;
   private final WinRMClient client;
 
   private final PipedInputStream toCallersStdin;
@@ -35,11 +36,11 @@ public class WindowsProcess
     this.client = client;
     this.command = command;
     
-    toCallersStdin = new PipedInputStream();
+    toCallersStdin = new PipedInputStream(INPUT_BUFFER);
     callersStdin = new PipedOutputStream(toCallersStdin);
-    callersStdout = new PipedInputStream();
+    callersStdout = new PipedInputStream(INPUT_BUFFER);
     toCallersStdout = new PipedOutputStream(callersStdout);
-    callersStderr = new PipedInputStream();
+    callersStderr = new PipedInputStream(INPUT_BUFFER);
     toCallersStderr = new PipedOutputStream(callersStderr);
     startStdoutCopyThread();
     try {
@@ -127,7 +128,7 @@ public class WindowsProcess
       public void run()
       {
         try {
-          byte[] buf = new byte[512];
+          byte[] buf = new byte[INPUT_BUFFER];
           for (;;) {
             int n = toCallersStdin.read(buf);
             if (n == -1)

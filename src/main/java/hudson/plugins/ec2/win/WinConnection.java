@@ -113,10 +113,15 @@ public class WinConnection
     }
 }
 
-  public void ping() throws IOException
+  public boolean ping()
   {
     log.log(Level.FINE, "pinging " + host);
-    winrm().ping();
+    try {
+    	winrm().ping();
+    	return true;
+    } catch(Exception e) {
+    	return false;
+    }
   }
 
   public void close()

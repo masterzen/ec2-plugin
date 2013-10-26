@@ -5,7 +5,7 @@ import hudson.model.Descriptor.FormException;
 import hudson.model.Hudson;
 import hudson.model.Node;
 import hudson.plugins.ec2.ssh.EC2UnixLauncher;
-import hudson.plugins.ec2.ssh.EC2WindowsLauncher;
+import hudson.plugins.ec2.win.EC2WindowsLauncher;
 import hudson.slaves.NodeProperty;
 
 import java.io.IOException;

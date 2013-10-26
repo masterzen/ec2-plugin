@@ -8,6 +8,7 @@ import hudson.plugins.ec2.win.winrm.soap.Option;
 import java.io.IOException;
 import java.io.PipedOutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -17,18 +18,30 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.httpclient.auth.BasicScheme;
+import org.apache.commons.httpclient.params.DefaultHttpParams;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.ParseException;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.AuthCache;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.params.AuthPolicy;
+import org.apache.http.client.protocol.ClientContext;
+import org.apache.http.conn.HttpHostConnectException;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.BasicAuthCache;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
+import org.apache.http.params.CoreConnectionPNames;
+import org.apache.http.protocol.BasicHttpContext;
+import org.apache.http.protocol.DefaultedHttpContext;
+import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.dom4j.Document;
 import org.dom4j.DocumentException;
@@ -64,6 +77,7 @@ public class WinRMClient
     this.url = url;
     this.username = username;
     this.password = password;
+    setupHTTPClient();
   }
 
   public void openShell()
@@ -109,7 +123,7 @@ public class WinRMClient
 
   public void sendInput(byte[] input)
   {
-    log.log(Level.INFO, "--> sending " + input.length);
+    log.log(Level.FINE, "--> sending " + input.length);
 
     Document request = buildSendInputRequest(input);
     sendRequest(request);
@@ -117,7 +131,7 @@ public class WinRMClient
 
   public boolean slurpOutput(PipedOutputStream stdout, PipedOutputStream stderr) throws IOException
   {
-    log.log(Level.INFO, "--> SlurpOutput");
+    log.log(Level.FINE, "--> SlurpOutput");
     ImmutableMap<String, PipedOutputStream> streams = ImmutableMap.of("stdout", stdout, "stderr", stderr);
     
     Document request = buildGetOutputRequest();
@@ -132,7 +146,7 @@ public class WinRMClient
     for(Element e: (List<Element>)xpath.selectNodes(response)) {
       PipedOutputStream stream = streams.get(e.attribute("Name").getText().toLowerCase());
       final byte[] decode = base64.decode(e.getText());
-      log.log(Level.INFO, "piping " + decode.length + " bytes from " + e.attribute("Name").getText().toLowerCase());
+      log.log(Level.FINE, "piping " + decode.length + " bytes from " + e.attribute("Name").getText().toLowerCase());
 
       stream.write(decode);
     }
@@ -140,11 +154,11 @@ public class WinRMClient
     XPath done = DocumentHelper.createXPath("//*[@State='http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done']");
     done.setNamespaceContext(namespaceContext);
     if (Iterables.isEmpty(done.selectNodes(response))) {
-      log.log(Level.INFO, "keep going baby!");
+      log.log(Level.FINE, "keep going baby!");
       return true;
     } else {
       exitCode = Integer.parseInt(first(response, "//"+Namespaces.NS_WIN_SHELL.getPrefix()+":ExitCode"));
-      log.log(Level.INFO, "no more output - command is now done - exit code: " + exitCode);
+      log.log(Level.FINE, "no more output - command is now done - exit code: " + exitCode);
     }
     return false;
   }
@@ -222,8 +236,7 @@ public class WinRMClient
       header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
             .maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
             .action(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command"))
-            .resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId)
-            .options(ImmutableList.of(new Option("WINRS_CONSOLEMODE_STDIN", "TRUE")));
+            .resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId);
 
       message.addHeader(header.build());
       final Element body = DocumentHelper.createElement(QName.get("Signal", Namespaces.NS_WIN_SHELL)).addAttribute("CommandId",
@@ -295,24 +308,42 @@ public class WinRMClient
     return "uuid:" + UUID.randomUUID().toString().toUpperCase();
   }
 
+  private DefaultHttpClient httpclient;
+
+private BasicAuthCache authCache;
+ 
+  private void setupHTTPClient() 
+  {
+	  ThreadSafeClientConnManager cm = new ThreadSafeClientConnManager();
+	  cm.setMaxTotal(10);
+	    httpclient = new DefaultHttpClient(cm);                                                                                                              
+
+	    
+	    
+	    CredentialsProvider credsProvider = new BasicCredentialsProvider();
+	    credsProvider.setCredentials(new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT), 
+	    		                     new UsernamePasswordCredentials(username, password));
+	    
+	    httpclient.getAuthSchemes().unregister(AuthPolicy.SPNEGO);
+	    httpclient.setCredentialsProvider(credsProvider);
+	    httpclient.getParams().setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 5000);  
+	    authCache = new BasicAuthCache();
+  }
+  
   private Document sendRequest(Document request)
   {
-    CredentialsProvider credsProvider = new BasicCredentialsProvider();
-    credsProvider.setCredentials(new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT), new UsernamePasswordCredentials(username,
-                                                                                                                        password));
-    DefaultHttpClient httpclient = new DefaultHttpClient();
-    httpclient.getAuthSchemes().unregister(AuthPolicy.SPNEGO);
-    httpclient.setCredentialsProvider(credsProvider);
-
-    try {
+	HttpContext context = new BasicHttpContext();
+	context.setAttribute(ClientContext.AUTH_CACHE, authCache);        
+	
+	try {
       HttpPost post = new HttpPost(url.toURI());
 
       HttpEntity entity = new StringEntity(request.asXML(), "application/soap+xml", "UTF-8");
       post.setEntity(entity);
 
-      log.log(Level.FINER, "Request:\nPOST " + url + "\n" + request.asXML());
+      log.log(Level.FINEST, "Request:\nPOST " + url + "\n" + request.asXML());
       
-      HttpResponse response = httpclient.execute(post);
+      HttpResponse response = httpclient.execute(post, context);
       HttpEntity responseEntity = response.getEntity();
 
       if (response.getStatusLine().getStatusCode() != 200) {
@@ -338,7 +369,7 @@ public class WinRMClient
 
       Document responseDocument = DocumentHelper.parseText(EntityUtils.toString(responseEntity));
 
-      log.log(Level.INFO, "Response:\n" + responseDocument.asXML());
+      log.log(Level.FINEST, "Response:\n" + responseDocument.asXML());
       return responseDocument;
     } catch (URISyntaxException e) {
       throw new RuntimeException("Invalid WinRM URI " + url);
@@ -346,9 +377,12 @@ public class WinRMClient
       throw new RuntimeException("Invalid WinRM body " + request.asXML());
     } catch (ClientProtocolException e) {
       throw new RuntimeException("HTTP Error " + e.getMessage(), e);
+    } catch (HttpHostConnectException e) {
+      log.log(Level.SEVERE, "Can't connect to host", e);
+      throw new WinRMConnectException("Can't connect to host: " + e.getMessage(), e);
     } catch (IOException e) {
       log.log(Level.SEVERE, "I/O Exception in HTTP POST", e);
-      throw new RuntimeException("I/O Exception " + e.getMessage(), e);
+      throw new RuntimeIOException("I/O Exception " + e.getMessage(), e);
     } catch (ParseException e) {
       log.log(Level.SEVERE, "XML Parse exception in HTTP POST", e);
       throw new RuntimeException("Unparseable XML in winRM response " + e.getMessage(), e);
