@@ -14,6 +14,7 @@ import java.util.logging.Logger;
 
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.ParseException;
 import org.apache.http.auth.AuthScope;
@@ -25,6 +26,7 @@ import org.apache.http.client.params.AuthPolicy;
 import org.apache.http.client.protocol.ClientContext;
 import org.apache.http.conn.HttpHostConnectException;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.BasicAuthCache;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.DefaultHttpClient;
@@ -173,6 +175,8 @@ public class WinRMClient {
 		httpclient.setCredentialsProvider(credsProvider);
 		httpclient.getParams().setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 5000);
 		authCache = new BasicAuthCache();
+//		BasicScheme authScheme = new BasicScheme();
+//		authCache.put(new HttpHost(url.getHost()), authScheme);
 	}
 
 	private Document sendRequest(Document request) {
