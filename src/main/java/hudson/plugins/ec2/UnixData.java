@@ -2,7 +2,6 @@ package hudson.plugins.ec2;
 
 import hudson.Extension;
 import hudson.model.Descriptor;
-import hudson.model.Hudson;
 
 import org.kohsuke.stapler.DataBoundConstructor;
 
@@ -40,5 +39,39 @@ public class UnixData extends AMITypeData {
 
 	public String getSshPort() {
 		return sshPort == null || sshPort.length() == 0 ? "22" : sshPort;
+	}
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime
+				* result
+				+ ((rootCommandPrefix == null) ? 0 : rootCommandPrefix
+						.hashCode());
+		result = prime * result + ((sshPort == null) ? 0 : sshPort.hashCode());
+		return result;
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (!(obj instanceof UnixData))
+			return false;
+		UnixData other = (UnixData) obj;
+		if (rootCommandPrefix == null) {
+			if (other.rootCommandPrefix != null)
+				return false;
+		} else if (!rootCommandPrefix.equals(other.rootCommandPrefix))
+			return false;
+		if (sshPort == null) {
+			if (other.sshPort != null)
+				return false;
+		} else if (!sshPort.equals(other.sshPort))
+			return false;
+		return true;
 	}
 }
