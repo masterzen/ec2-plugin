@@ -30,13 +30,10 @@ public class WindowsData extends AMITypeData {
 	}
 
     @Extension
-    public static final Descriptor<AMITypeData> DESCRIPTOR = new Descriptor<AMITypeData>() {
+    public static class DescriptorImpl extends Descriptor<AMITypeData> 
+    {
         public String getDisplayName() {
             return "windows";
         }
-    };
-
-	public Descriptor<AMITypeData> getDescriptor() {
-        return DESCRIPTOR;
-	}
+    }
 }

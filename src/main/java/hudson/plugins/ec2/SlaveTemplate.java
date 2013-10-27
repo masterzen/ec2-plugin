@@ -717,9 +717,9 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
             return null;
         }
 
-        public List<Descriptor> getAmiTypes()
+        public List<Descriptor<AMITypeData>> getAMITypeDescriptors()
         {
-        	return Arrays.asList(Hudson.getInstance().getDescriptor(UnixData.class), Hudson.getInstance().getDescriptor(WindowsData.class));
+        	return Hudson.getInstance().<AMITypeData,Descriptor<AMITypeData>>getDescriptorList(AMITypeData.class);
         }
         
         /**

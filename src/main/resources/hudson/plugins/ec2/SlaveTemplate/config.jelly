@@ -76,8 +76,11 @@ THE SOFTWARE.
     <f:textbox />
   </f:entry>
 
+ <f:dropdownDescriptorSelector title="${%AMI Type}" field="amiType" descriptors="${descriptor.getAMITypeDescriptors()}" />
+
+<!--
   <f:dropdownList name="amiType"  title="${%AMI Type}" help="help-amiType.html">
-    <f:dropdownListBlock value="unix"  title="${%Unix}" selected="${instance.isUnixSlave}" staplerClass="hudson.plugins.ec2.UnixData$DescriptorImpl">
+    <f:dropdownListBlock value="unix"  title="${%Unix}" selected="${instance.isUnixSlave}" staplerClass="${instance.}">
 	  <f:entry title="${%Root command prefix}" field="rootCommandPrefix">
 	    <f:textbox/>
 	  </f:entry>
@@ -91,6 +94,7 @@ THE SOFTWARE.
 	    </f:entry>
     </f:dropdownListBlock>
   </f:dropdownList>
+-->
 
   <f:entry title="${%Labels}" field="labelString">
     <f:textbox />

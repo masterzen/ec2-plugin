@@ -1,7 +1,6 @@
 package hudson.plugins.ec2;
 
 import hudson.Extension;
-import hudson.model.Describable;
 import hudson.model.Descriptor;
 import hudson.model.Hudson;
 
@@ -28,21 +27,18 @@ public class UnixData extends AMITypeData {
 	}
 
     @Extension
-    public static final Descriptor<AMITypeData> DESCRIPTOR = new Descriptor<AMITypeData>() {
+    public static class DescriptorImpl extends Descriptor<AMITypeData> 
+    {
         public String getDisplayName() {
             return "unix";
         }
-    };
-
-	public Descriptor<AMITypeData> getDescriptor() {
-        return DESCRIPTOR;
-	}
+    }
 
 	public String getRootCommandPrefix() {
 		return rootCommandPrefix;
 	}
 
 	public String getSshPort() {
-		return sshPort;
+		return sshPort == null || sshPort.length() == 0 ? "22" : sshPort;
 	}
 }
