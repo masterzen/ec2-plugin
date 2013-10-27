@@ -2,7 +2,6 @@ package hudson.plugins.ec2.win.winrm.soap;
 
 import java.net.URI;
 import java.util.List;
-import java.util.Map;
 
 import com.google.common.collect.ImmutableList;
 

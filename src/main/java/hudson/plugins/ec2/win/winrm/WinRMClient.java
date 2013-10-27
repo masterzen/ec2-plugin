@@ -1,18 +1,14 @@
 package hudson.plugins.ec2.win.winrm;
 
-import hudson.plugins.ec2.win.winrm.soap.HeaderBuilder;
-import hudson.plugins.ec2.win.winrm.soap.MessageBuilder;
+import hudson.plugins.ec2.win.winrm.nessages.RequestFactory;
 import hudson.plugins.ec2.win.winrm.soap.Namespaces;
-import hudson.plugins.ec2.win.winrm.soap.Option;
 
 import java.io.IOException;
 import java.io.PipedOutputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.List;
-import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -41,11 +37,9 @@ import org.dom4j.Document;
 import org.dom4j.DocumentException;
 import org.dom4j.DocumentHelper;
 import org.dom4j.Element;
-import org.dom4j.QName;
 import org.dom4j.XPath;
 import org.jaxen.SimpleNamespaceContext;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 
@@ -57,31 +51,31 @@ public class WinRMClient {
 	private String password;
 	private String shellId;
 
-	private String timeout = "PT60S";
-	private int envelopSize = 153600;
-	private String locale = "en-US";
 	private String commandId;
 	private int exitCode;
 
 	private SimpleNamespaceContext namespaceContext;
 
+	private final RequestFactory factory;
+
 	public WinRMClient(URL url, String username, String password) {
 		this.url = url;
 		this.username = username;
 		this.password = password;
+		this.factory = new RequestFactory(url);
 		setupHTTPClient();
 	}
 
 	public void openShell() {
 		log.log(Level.INFO, "opening winrm shell to: " + url);
-		Document request = buildShellRequest();
+		Document request = factory.newOpenShellRequest().build();
 		shellId = first(sendRequest(request), "//*[@Name='ShellId']");
 		log.log(Level.FINER, "shellid: " + shellId);
 	}
 
 	public void executeCommand(String command) {
 		log.log(Level.INFO, "winrm execute on " + shellId + " command: " + command);
-		Document request = buildExecuteCommandRequest(command);
+		Document request = factory.newExecuteCommandRequest(shellId, command).build();
 		commandId = first(sendRequest(request), "//" + Namespaces.NS_WIN_SHELL.getPrefix() + ":CommandId");
 		log.log(Level.FINER, "winrm started execution on " + shellId + " commandId: " + commandId);
 	}
@@ -93,7 +87,7 @@ public class WinRMClient {
 
 		log.log(Level.INFO, "closing winrm shell " + shellId);
 
-		Document request = buildDeleteShellRequest();
+		Document request = factory.newDeleteShellRequest(shellId).build();
 		sendRequest(request);
 
 	}
@@ -105,14 +99,14 @@ public class WinRMClient {
 
 		log.log(Level.FINE, "signalling winrm shell " + shellId + " command: " + commandId);
 
-		Document request = buildSignalRequest();
+		Document request = factory.newSignalRequest(shellId, commandId).build();
 		sendRequest(request);
 	}
 
 	public void sendInput(byte[] input) {
 		log.log(Level.FINE, "--> sending " + input.length);
 
-		Document request = buildSendInputRequest(input);
+		Document request = factory.newSendInputRequest(input, shellId, commandId).build();
 		sendRequest(request);
 	}
 
@@ -120,7 +114,7 @@ public class WinRMClient {
 		log.log(Level.FINE, "--> SlurpOutput");
 		ImmutableMap<String, PipedOutputStream> streams = ImmutableMap.of("stdout", stdout, "stderr", stderr);
 
-		Document request = buildGetOutputRequest();
+		Document request = factory.newGetOutputRequest(shellId, commandId).build();
 		Document response = sendRequest(request);
 
 		XPath xpath = DocumentHelper.createXPath("//" + Namespaces.NS_WIN_SHELL.getPrefix() + ":Stream");
@@ -154,126 +148,6 @@ public class WinRMClient {
 		return exitCode;
 	}
 
-	private Document buildGetOutputRequest() {
-		MessageBuilder message = new MessageBuilder();
-		HeaderBuilder header = message.newHeader();
-		try {
-			header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
-					.maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
-					.action(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive"))
-					.resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId);
-
-			message.addHeader(header.build());
-			Element body = DocumentHelper.createElement(QName.get("Receive", Namespaces.NS_WIN_SHELL));
-			body.addElement(QName.get("DesiredStream", Namespaces.NS_WIN_SHELL)).addAttribute("CommandId", commandId)
-					.addText("stdout stderr");
-			message.addBody(body);
-			return message.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException("Error while building request content", e);
-		}
-	}
-
-	private Document buildSendInputRequest(byte[] input) {
-		MessageBuilder message = new MessageBuilder();
-		HeaderBuilder header = message.newHeader();
-		try {
-			header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
-					.maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
-					.action(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Send"))
-					.resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId);
-
-			message.addHeader(header.build());
-			Element body = DocumentHelper.createElement(QName.get("Send", Namespaces.NS_WIN_SHELL));
-			Base64 base64 = new Base64(0);
-			body.addElement(QName.get("Stream", Namespaces.NS_WIN_SHELL)).addAttribute("Name", "stdin")
-					.addAttribute("CommandId", commandId).addText(base64.encodeToString(input));
-			message.addBody(body);
-			return message.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException("Error while building request content", e);
-		}
-	}
-
-	private Document buildDeleteShellRequest() {
-		MessageBuilder message = new MessageBuilder();
-		HeaderBuilder header = message.newHeader();
-		try {
-			header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
-					.maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
-					.action(new URI("http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete")).shellId(shellId)
-					.resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd"));
-
-			message.addHeader(header.build());
-			message.addBody(null);
-			return message.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException("Error while building request content", e);
-		}
-	}
-
-	private Document buildSignalRequest() {
-		MessageBuilder message = new MessageBuilder();
-		HeaderBuilder header = message.newHeader();
-		try {
-			header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
-					.maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
-					.action(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command"))
-					.resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId);
-
-			message.addHeader(header.build());
-			final Element body = DocumentHelper.createElement(QName.get("Signal", Namespaces.NS_WIN_SHELL)).addAttribute(
-					"CommandId", commandId);
-			body.addElement(QName.get("Code", Namespaces.NS_WIN_SHELL)).addText(
-					"http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/terminate");
-			message.addBody(body);
-			return message.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException("Error while building request content", e);
-		}
-	}
-
-	private Document buildShellRequest() {
-		MessageBuilder message = new MessageBuilder();
-		HeaderBuilder header = message.newHeader();
-		try {
-			header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
-					.maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
-					.action(new URI("http://schemas.xmlsoap.org/ws/2004/09/transfer/Create"))
-					.resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd"))
-					.options(ImmutableList.of(new Option("WINRS_NOPROFILE", "FALSE"), new Option("WINRS_CODEPAGE", "437")));
-
-			message.addHeader(header.build());
-			final Element body = DocumentHelper.createElement(QName.get("Shell", Namespaces.NS_WIN_SHELL));
-			body.addElement(QName.get("InputStreams", Namespaces.NS_WIN_SHELL)).addText("stdin");
-			body.addElement(QName.get("OutputStreams", Namespaces.NS_WIN_SHELL)).addText("stdout stderr");
-			message.addBody(body);
-			return message.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException("Error while building request content", e);
-		}
-	}
-
-	private Document buildExecuteCommandRequest(String command) {
-		MessageBuilder message = new MessageBuilder();
-		HeaderBuilder header = message.newHeader();
-		try {
-			header.to(url.toURI()).replyTo(new URI("http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous"))
-					.maxEnvelopeSize(envelopSize).id(generateUUID()).locale(locale).timeout(timeout)
-					.action(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Command"))
-					.resourceURI(new URI("http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd")).shellId(shellId)
-					.options(ImmutableList.of(new Option("WINRS_CONSOLEMODE_STDIN", "FALSE")));
-
-			message.addHeader(header.build());
-			final Element body = DocumentHelper.createElement(QName.get("CommandLine", Namespaces.NS_WIN_SHELL));
-			body.addElement(QName.get("Command", Namespaces.NS_WIN_SHELL)).addText("\"" + command + "\"");
-			message.addBody(body);
-			return message.build();
-		} catch (URISyntaxException e) {
-			throw new RuntimeException("Error while building request content", e);
-		}
-	}
-
 	private static String first(Document doc, String selector) {
 		XPath xpath = DocumentHelper.createXPath(selector);
 		try {
@@ -281,10 +155,6 @@ public class WinRMClient {
 		} catch (IndexOutOfBoundsException e) {
 			throw new RuntimeException("Malformed response for " + selector + " in " + doc.asXML());
 		}
-	}
-
-	private String generateUUID() {
-		return "uuid:" + UUID.randomUUID().toString().toUpperCase();
 	}
 
 	private DefaultHttpClient httpclient;
@@ -370,10 +240,10 @@ public class WinRMClient {
 	}
 
 	public String getTimeout() {
-		return timeout;
+		return factory.getTimeout();
 	}
 
 	public void setTimeout(String timeout) {
-		this.timeout = timeout;
+		factory.setTimeout(timeout);
 	}
 }
