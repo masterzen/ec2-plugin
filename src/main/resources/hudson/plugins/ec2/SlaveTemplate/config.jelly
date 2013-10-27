@@ -76,9 +76,21 @@ THE SOFTWARE.
     <f:textbox />
   </f:entry>
 
-  <f:entry title="${%Root command prefix}" field="rootCommandPrefix">
-    <f:textbox/>
-  </f:entry>
+  <f:dropdownList name="amiType"  title="${%AMI Type}" help="help-amiType.html">
+    <f:dropdownListBlock value="unix"  title="${%Unix}" selected="${instance.isUnixSlave}" staplerClass="hudson.plugins.ec2.UnixData$DescriptorImpl">
+	  <f:entry title="${%Root command prefix}" field="rootCommandPrefix">
+	    <f:textbox/>
+	  </f:entry>
+      <f:entry title="${%Remote ssh port}" field="sshPort">
+        <f:textbox />
+      </f:entry>
+    </f:dropdownListBlock>
+    <f:dropdownListBlock value="windows"  title="${%Windows}" selected="${instance.isWindowsSlave}" help="help-windows.html" staplerClass="hudson.plugins.ec2.WindowsData$DescriptorImpl">
+	    <f:entry title="${%Windows Admin Password}" field="adminPassword">
+	      <f:password />
+	    </f:entry>
+    </f:dropdownListBlock>
+  </f:dropdownList>
 
   <f:entry title="${%Labels}" field="labelString">
     <f:textbox />
@@ -106,10 +118,6 @@ THE SOFTWARE.
 
     <f:entry title="${%JVM Options}" field="jvmopts">
       <f:textbox/>
-    </f:entry>
-
-    <f:entry title="${%Remote ssh port}" field="sshPort">
-      <f:textbox />
     </f:entry>
 
     <f:entry title="${%Stop/Disconnect on Idle Timeout}" field="stopOnTerminate">
@@ -144,14 +152,6 @@ THE SOFTWARE.
 
     <f:entry title="${%Launch Timeout in seconds}" field="launchTimeoutStr">
       <f:textbox />
-    </f:entry>
-
-    <f:entry title="${%Windows Slave}" field="windowsSlave">
-      <f:checkbox />
-    </f:entry>
-
-    <f:entry title="${%Windows Admin Password}" field="adminPassword">
-      <f:password />
     </f:entry>
 
   </f:advanced>

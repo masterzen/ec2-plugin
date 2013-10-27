@@ -51,6 +51,7 @@ import org.kohsuke.stapler.QueryParameter;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.model.*;
+import com.google.common.collect.ImmutableList;
 
 /**
  * Template of {@link EC2AbstractSlave} to launch.
@@ -64,7 +65,6 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     public final SpotConfiguration spotConfig;
     public final String securityGroups;
     public final String remoteFS;
-    public final String sshPort;
     public final InstanceType type;
     public final String labels;
     public final Node.Mode mode;
@@ -72,7 +72,6 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     public final String userData;
     public final String numExecutors;
     public final String remoteAdmin;
-    public final String rootCommandPrefix;
     public final String jvmopts;
     public final String subnetId;
     public final String idleTerminationMinutes;
@@ -83,22 +82,27 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     private final List<EC2Tag> tags;
     public final boolean usePrivateDnsName;
     protected transient EC2Cloud parent;
-    private final boolean windowsSlave;
-    private final String adminPassword;
+    public AMITypeData amiType;
     
     public int launchTimeout;
 
     private transient /*almost final*/ Set<LabelAtom> labelSet;
 	private transient /*almost final*/ Set<String> securityGroupSet;
+	
+	/* those are retained for backward compatibility */
+	@Deprecated
+	public transient String sshPort;
+	@Deprecated
+	public transient String rootCommandPrefix;
 
     @DataBoundConstructor
-    public SlaveTemplate(String ami, String zone, SpotConfiguration spotConfig, String securityGroups, String remoteFS, String sshPort, InstanceType type, String labelString, Node.Mode mode, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate, String subnetId, List<EC2Tag> tags, String idleTerminationMinutes, boolean usePrivateDnsName, String instanceCapStr, String iamInstanceProfile, boolean useEphemeralDevices, String launchTimeoutStr, boolean windowsSlave, String adminPassword) {
+    public SlaveTemplate(String ami, String zone, SpotConfiguration spotConfig, String securityGroups, String remoteFS, InstanceType type, String labelString, Node.Mode mode, String description, String initScript, String userData, String numExecutors, String remoteAdmin, AMITypeData amiType, String jvmopts, boolean stopOnTerminate, String subnetId, List<EC2Tag> tags, String idleTerminationMinutes, boolean usePrivateDnsName, String instanceCapStr, String iamInstanceProfile, boolean useEphemeralDevices, String launchTimeoutStr) {
         this.ami = ami;
         this.zone = zone;
         this.spotConfig = spotConfig;
         this.securityGroups = securityGroups;
         this.remoteFS = remoteFS;
-        this.sshPort = sshPort;
+        this.amiType = amiType;
         this.type = type;
         this.labels = Util.fixNull(labelString);
         this.mode = mode;
@@ -107,15 +111,12 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         this.userData = userData;
         this.numExecutors = Util.fixNull(numExecutors).trim();
         this.remoteAdmin = remoteAdmin;
-        this.rootCommandPrefix = rootCommandPrefix;
         this.jvmopts = jvmopts;
         this.stopOnTerminate = stopOnTerminate;
         this.subnetId = subnetId;
         this.tags = tags;
         this.idleTerminationMinutes = idleTerminationMinutes;
         this.usePrivateDnsName = usePrivateDnsName;
-        this.adminPassword = adminPassword;
-        this.windowsSlave = windowsSlave;
 
         if (null == instanceCapStr || instanceCapStr.equals("")) {
             this.instanceCap = Integer.MAX_VALUE;
@@ -135,6 +136,14 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         readResolve(); // initialize
     }
 
+    /**
+     * Backward compatible constructor for reloading previous version data
+     */
+    public SlaveTemplate(String ami, String zone, SpotConfiguration spotConfig, String securityGroups, String remoteFS, String sshPort, InstanceType type, String labelString, Node.Mode mode, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate, String subnetId, List<EC2Tag> tags, String idleTerminationMinutes, boolean usePrivateDnsName, String instanceCapStr, String iamInstanceProfile, boolean useEphemeralDevices, String launchTimeoutStr)
+    {
+    	this(ami, zone, spotConfig, securityGroups, remoteFS, type, labelString, mode, description, initScript, userData, numExecutors, remoteAdmin, new UnixData(rootCommandPrefix, sshPort), jvmopts, stopOnTerminate, subnetId, tags, idleTerminationMinutes, usePrivateDnsName, instanceCapStr, iamInstanceProfile, useEphemeralDevices, launchTimeoutStr); 
+    }
+    
     public EC2Cloud getParent() {
         return parent;
     }
@@ -187,6 +196,10 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 
     public int getSshPort() {
         try {
+        	String sshPort = "";
+        	if (amiType.isUnix()) {
+        		sshPort = ((UnixData)amiType).getSshPort();
+        	}
             return Integer.parseInt(sshPort);
         } catch (NumberFormatException e) {
             return 22;
@@ -198,7 +211,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     }
 
     public String getRootCommandPrefix() {
-        return rootCommandPrefix;
+        return amiType.isUnix() ? ((UnixData)amiType).getRootCommandPrefix() : "";
     }
 
     public String getSubnetId() {
@@ -560,11 +573,11 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 	}
 
     protected EC2OndemandSlave newOndemandSlave(Instance inst) throws FormException, IOException {
-        return new EC2OndemandSlave(inst.getInstanceId(), description, remoteFS, getSshPort(), getNumExecutors(), labels, mode, initScript, remoteAdmin, rootCommandPrefix, jvmopts, stopOnTerminate, idleTerminationMinutes, inst.getPublicDnsName(), inst.getPrivateDnsName(), EC2Tag.fromAmazonTags(inst.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout(), isWindowsSlave(), getAdminPassword() );
+        return new EC2OndemandSlave(inst.getInstanceId(), description, remoteFS, getSshPort(), getNumExecutors(), labels, mode, initScript, remoteAdmin, getRootCommandPrefix(), jvmopts, stopOnTerminate, idleTerminationMinutes, inst.getPublicDnsName(), inst.getPrivateDnsName(), EC2Tag.fromAmazonTags(inst.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout(), isWindowsSlave(), getAdminPassword() );
     }
 
     protected EC2SpotSlave newSpotSlave(SpotInstanceRequest sir, String name) throws FormException, IOException {
-        return new EC2SpotSlave(name, sir.getSpotInstanceRequestId(), description, remoteFS, getSshPort(), getNumExecutors(), mode, initScript, labels, remoteAdmin, rootCommandPrefix, jvmopts, idleTerminationMinutes, EC2Tag.fromAmazonTags(sir.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout(), isWindowsSlave(), getAdminPassword());
+        return new EC2SpotSlave(name, sir.getSpotInstanceRequestId(), description, remoteFS, getSshPort(), getNumExecutors(), mode, initScript, labels, remoteAdmin, getRootCommandPrefix(), jvmopts, idleTerminationMinutes, EC2Tag.fromAmazonTags(sir.getTags()), parent.name, usePrivateDnsName, getLaunchTimeout(), isWindowsSlave(), getAdminPassword());
     }
 
     /**
@@ -660,6 +673,9 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         	instanceCap = Integer.MAX_VALUE;
         }
 
+        if (amiType == null) {
+        	amiType = new UnixData(rootCommandPrefix, sshPort);
+        }
         return this;
     }
 
@@ -679,20 +695,19 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         }
     }
 
-    /**
-     * @return the windowsSlave
-     */
     public boolean isWindowsSlave()
     {
-      return windowsSlave;
+      return amiType.isWindows();
     }
 
-    /**
-     * @return the adminPassword
-     */
+    public boolean isUnixSlave()
+    {
+      return amiType.isUnix();
+    }
+
     public String getAdminPassword()
     {
-      return adminPassword;
+      return amiType.isWindows() ? ((WindowsData)amiType).getPassword() : "";
     }
 
     @Extension
@@ -702,6 +717,11 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
             return null;
         }
 
+        public List<Descriptor> getAmiTypes()
+        {
+        	return Arrays.asList(Hudson.getInstance().getDescriptor(UnixData.class), Hudson.getInstance().getDescriptor(WindowsData.class));
+        }
+        
         /**
          * Since this shares much of the configuration with {@link EC2Computer}, check its help page, too.
          */
