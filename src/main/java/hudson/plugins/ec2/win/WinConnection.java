@@ -17,114 +17,101 @@ import static java.util.regex.Pattern.quote;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+public class WinConnection {
+	private static final Logger log = Logger.getLogger(WinConnection.class.getName());
 
-public class WinConnection
-{
-  private static final Logger log = Logger.getLogger(WinConnection.class.getName());
-  
-  // ^[a-zA-Z]\:(\\|\/)([^\\\/\:\*\?\<\>\"\|]+(\\|\/){0,1})+$
-  private static final Pattern VALIDATE_WINDOWS_PATH = Pattern.compile("^[A-Za-z]:\\\\[-a-zA-Z0-9_.\\\\]*");
-  
-  private String host;
-  private String username;
-  private String password;
-  
-  private final NtlmPasswordAuthentication authentication;
-  
-  public WinConnection(String host, String username, String password)
-  {
-    this.host = host;
-    this.username = username;
-    this.password = password;
-    this.authentication = new NtlmPasswordAuthentication(null, username, password);
-  }
-  
-  public WinRM winrm()
-  {
-    return new WinRM(host, username, password);
-  }
+	// ^[a-zA-Z]\:(\\|\/)([^\\\/\:\*\?\<\>\"\|]+(\\|\/){0,1})+$
+	private static final Pattern VALIDATE_WINDOWS_PATH = Pattern.compile("^[A-Za-z]:\\\\[-a-zA-Z0-9_.\\\\]*");
 
-  public WinRM winrm(int timeout)
-  {
-    WinRM winrm = new WinRM(host, username, password);
-    winrm.setTimeout(timeout);
-    return winrm;
-  }
+	private String host;
+	private String username;
+	private String password;
 
-  public WindowsProcess execute(String commandLine)
-  {
-    return execute(commandLine, 60);
-  }
+	private final NtlmPasswordAuthentication authentication;
 
-  public WindowsProcess execute(String commandLine, int timeout)
-  {
-    return winrm(timeout).execute(commandLine);
-  }
+	public WinConnection(String host, String username, String password) {
+		this.host = host;
+		this.username = username;
+		this.password = password;
+		this.authentication = new NtlmPasswordAuthentication(null, username, password);
+	}
 
-  public OutputStream putFile(String path) throws IOException 
-  {
-    SmbFile smbFile = new SmbFile(encodeForSmb(path), authentication);
-    return smbFile.getOutputStream();
-  }
-  
-  public InputStream getFile(String path) throws IOException
-  {
-    SmbFile smbFile = new SmbFile(encodeForSmb(path), authentication);
-    return smbFile.getInputStream();
-  }
+	public WinRM winrm() {
+		return new WinRM(host, username, password);
+	}
 
-  private String encodeForSmb(String path)
-  {
-    if (!VALIDATE_WINDOWS_PATH.matcher(path).matches()) {
-      throw new IllegalArgumentException("Path '"+path+"' is not a valid windows path like C:\\Windows\\Temp");
-    }
-    
-    StringBuilder smbUrl = new StringBuilder(smbURLPrefix());
-    smbUrl.append(toAdministrativeSharePath(path).replace('\\', '/'));
-    return smbUrl.toString();
-  }
+	public WinRM winrm(int timeout) {
+		WinRM winrm = new WinRM(host, username, password);
+		winrm.setTimeout(timeout);
+		return winrm;
+	}
 
-  private String toAdministrativeSharePath(String path)
-  {
-    // administrative windows share are DRIVE$path like
-    return path.substring(0, 1) + "$" + path.substring(2);
-  }
+	public WindowsProcess execute(String commandLine) {
+		return execute(commandLine, 60);
+	}
 
-  private String smbURLPrefix() {
-    StringBuilder prefix = new StringBuilder();
-    prefix.append("smb://");
-    if (username != null) {
-      prefix.append(urlEncode(username.replaceFirst(quote("\\"), ";")));
-      prefix.append(":");
-      prefix.append(urlEncode(password));
-      prefix.append("@");
-    }
-    // port?
-    prefix.append(urlEncode(host));
-    prefix.append('/');
-    return prefix.toString();
-  }
-  
-  private static String urlEncode(String value) {
-    try {
-        return URLEncoder.encode(value, "UTF-8");
-    } catch (UnsupportedEncodingException e) {
-        throw new RuntimeException("Invalid SMB URL", e);
-    }
-}
+	public WindowsProcess execute(String commandLine, int timeout) {
+		return winrm(timeout).execute(commandLine);
+	}
 
-  public boolean ping()
-  {
-    log.log(Level.FINE, "pinging " + host);
-    try {
-    	winrm().ping();
-    	return true;
-    } catch(Exception e) {
-    	return false;
-    }
-  }
+	public OutputStream putFile(String path) throws IOException {
+		SmbFile smbFile = new SmbFile(encodeForSmb(path), authentication);
+		return smbFile.getOutputStream();
+	}
 
-  public void close()
-  {
-  }
+	public InputStream getFile(String path) throws IOException {
+		SmbFile smbFile = new SmbFile(encodeForSmb(path), authentication);
+		return smbFile.getInputStream();
+	}
+
+	private String encodeForSmb(String path) {
+		if (!VALIDATE_WINDOWS_PATH.matcher(path).matches()) {
+			throw new IllegalArgumentException("Path '" + path + "' is not a valid windows path like C:\\Windows\\Temp");
+		}
+
+		StringBuilder smbUrl = new StringBuilder(smbURLPrefix());
+		smbUrl.append(toAdministrativeSharePath(path).replace('\\', '/'));
+		return smbUrl.toString();
+	}
+
+	private String toAdministrativeSharePath(String path) {
+		// administrative windows share are DRIVE$path like
+		return path.substring(0, 1) + "$" + path.substring(2);
+	}
+
+	private String smbURLPrefix() {
+		StringBuilder prefix = new StringBuilder();
+		prefix.append("smb://");
+		if (username != null) {
+			prefix.append(urlEncode(username.replaceFirst(quote("\\"), ";")));
+			prefix.append(":");
+			prefix.append(urlEncode(password));
+			prefix.append("@");
+		}
+		// port?
+		prefix.append(urlEncode(host));
+		prefix.append('/');
+		return prefix.toString();
+	}
+
+	private static String urlEncode(String value) {
+		try {
+			return URLEncoder.encode(value, "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			throw new RuntimeException("Invalid SMB URL", e);
+		}
+	}
+
+	public boolean ping() {
+		log.log(Level.FINE, "pinging " + host);
+		try {
+			winrm().ping();
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	public void close() {
+	}
 }
