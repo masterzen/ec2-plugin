@@ -72,7 +72,10 @@ public abstract class EC2AbstractSlave extends Slave {
     public final String jvmopts; //e.g. -Xmx1g
     public final boolean stopOnTerminate;
     public final String idleTerminationMinutes;
+    public final boolean windowsSlave;
     public final boolean usePrivateDnsName;
+    public final String adminPassword; // for windows WinRM
+    public final boolean useHTTPS; // for windows WinRM
     public List<EC2Tag> tags;
     public EC2Cloud cloud;
 
@@ -100,7 +103,7 @@ public abstract class EC2AbstractSlave extends Slave {
     
 
     @DataBoundConstructor
-    public EC2AbstractSlave(String name, String instanceId, String description, String remoteFS, int sshPort, int numExecutors, Mode mode, String labelString, ComputerLauncher launcher, RetentionStrategy<EC2Computer> retentionStrategy, String initScript, List<? extends NodeProperty<?>> nodeProperties, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate, String idleTerminationMinutes, List<EC2Tag> tags, String cloudName, boolean usePrivateDnsName, int launchTimeout) throws FormException, IOException {
+    public EC2AbstractSlave(String name, String instanceId, String description, String remoteFS, int sshPort, int numExecutors, Mode mode, String labelString, ComputerLauncher launcher, RetentionStrategy<EC2Computer> retentionStrategy, String initScript, List<? extends NodeProperty<?>> nodeProperties, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate, String idleTerminationMinutes, List<EC2Tag> tags, String cloudName, boolean usePrivateDnsName, int launchTimeout, boolean windowsSlave, String adminPassword, boolean useHTTPS) throws FormException, IOException {
 
         super(name, "", remoteFS, numExecutors, mode, labelString, launcher, retentionStrategy, nodeProperties);
 
@@ -116,6 +119,9 @@ public abstract class EC2AbstractSlave extends Slave {
         this.usePrivateDnsName = usePrivateDnsName;
         cloud = (EC2Cloud) Hudson.getInstance().getCloud(cloudName);
         this.launchTimeout = launchTimeout;
+        this.windowsSlave = windowsSlave;
+        this.adminPassword = adminPassword;
+        this.useHTTPS = useHTTPS;
     }
 
     protected Object readResolve() {
@@ -246,7 +252,7 @@ public abstract class EC2AbstractSlave extends Slave {
 
     String getRemoteAdmin() {
         if (remoteAdmin == null || remoteAdmin.length() == 0)
-            return "root";
+            return windowsSlave ? "Administrator" : "root";
         return remoteAdmin;
     }
 
