@@ -12,12 +12,15 @@ import hudson.slaves.ComputerLauncher;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.util.concurrent.TimeUnit;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.ec2.model.Instance;
 
 public class EC2WindowsLauncher extends EC2ComputerLauncher {
 
+    final long sleepBetweenAttemps = TimeUnit.SECONDS.toMillis(10);
+    
     @Override
     protected void launch(EC2Computer computer, PrintStream logger, Instance inst) throws IOException, AmazonClientException,
     InterruptedException {
@@ -27,6 +30,8 @@ public class EC2WindowsLauncher extends EC2ComputerLauncher {
             OutputStream slaveJar = connection.putFile("C:\\Windows\\Temp\\slave.jar");
             slaveJar.write(Hudson.getInstance().getJnlpJars("slave.jar").readFully());
 
+            logger.println("slave.jar sent remotely. Bootstrapping it");
+            
             final WindowsProcess process = connection.execute("java -jar C:\\Windows\\Temp\\slave.jar", 86400);
             computer.setChannel(process.getStdout(), process.getStdin(), logger, new Listener() {
                 @Override
@@ -90,7 +95,7 @@ public class EC2WindowsLauncher extends EC2ComputerLauncher {
                 connection.setUseHTTPS(computer.getNode().useHTTPS);
                 if (!connection.ping()) {
                     logger.println("Waiting for WinRM to come up. Sleeping 10s.");
-                    Thread.sleep(10000);
+                    Thread.sleep(sleepBetweenAttemps);
                     continue;
                 }
 
@@ -98,7 +103,7 @@ public class EC2WindowsLauncher extends EC2ComputerLauncher {
                 return connection; // successfully connected
             } catch (IOException e) {
                 logger.println("Waiting for WinRM to come up. Sleeping 10s.");
-                Thread.sleep(10000);
+                Thread.sleep(sleepBetweenAttemps);
             }
         }
     }

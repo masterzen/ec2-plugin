@@ -110,6 +110,8 @@ public class WinConnection {
         log.log(Level.FINE, "pinging " + host);
         try {
             winrm().ping();
+            SmbFile test = new SmbFile(encodeForSmb("C:\\"), authentication);
+            test.connect();
             return true;
         } catch (Exception e) {
             return false;

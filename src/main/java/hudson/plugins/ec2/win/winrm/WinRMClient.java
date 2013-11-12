@@ -4,25 +4,33 @@ import hudson.plugins.ec2.win.winrm.request.RequestFactory;
 import hudson.plugins.ec2.win.winrm.soap.Namespaces;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.PipedOutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.ConnectException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.net.ssl.SSLException;
+
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
 import org.apache.http.ParseException;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.params.AuthPolicy;
 import org.apache.http.client.protocol.ClientContext;
@@ -35,8 +43,10 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.BasicAuthCache;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
 import org.apache.http.params.CoreConnectionPNames;
 import org.apache.http.protocol.BasicHttpContext;
+import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.dom4j.Document;
@@ -64,7 +74,7 @@ public class WinRMClient {
 
     private final RequestFactory factory;
 
-    private BasicAuthCache authCache;
+    private ThreadLocal<BasicAuthCache> authCache = new ThreadLocal<BasicAuthCache>();
     private boolean useHTTPS;
     private Scheme httpsScheme;
     private BasicCredentialsProvider credsProvider;
@@ -174,8 +184,6 @@ public class WinRMClient {
         credsProvider.setCredentials(new AuthScope(AuthScope.ANY_HOST, AuthScope.ANY_PORT), new UsernamePasswordCredentials(
                 username, password));
 
-        authCache = new BasicAuthCache();
-
         if (useHTTPS) {
             SSLSocketFactory socketFactory;
             try {
@@ -195,13 +203,27 @@ public class WinRMClient {
         httpclient.getAuthSchemes().unregister(AuthPolicy.SPNEGO);
         httpclient.setCredentialsProvider(credsProvider);
         httpclient.getParams().setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 5000);
+        //httpclient.setHttpRequestRetryHandler(new WinRMRetryHandler());
         return httpclient;
     }
 
     private Document sendRequest(Document request) {
+        return sendRequest(request, 0);
+    }
+
+    private Document sendRequest(Document request, int retry) {
+        if (retry > 3) {
+            throw new RuntimeException("Too many retry for request");
+        }
+        
         DefaultHttpClient httpclient = buildHTTPClient();
         HttpContext context = new BasicHttpContext();
-        context.setAttribute(ClientContext.AUTH_CACHE, authCache);
+        
+        if (authCache.get() == null) {
+            authCache.set(new BasicAuthCache());
+        }
+        
+        context.setAttribute(ClientContext.AUTH_CACHE, authCache.get());
 
         if (useHTTPS) {
             httpclient.getConnectionManager().getSchemeRegistry().register(httpsScheme);
@@ -234,7 +256,15 @@ public class WinRMClient {
                     // to scrap the connections, and try again
                     if (response.getStatusLine().getStatusCode() == 401) {
                         // we need to force using new connections here
-                        //return sendRequest(request);
+                        // throw away our auth cache
+                        log.log(Level.WARNING, "winrm returned 401 - shouldn't happen though - retrying in 2 minutes");
+                        try {
+                            Thread.sleep(TimeUnit.MINUTES.toMillis(3));
+                        } catch (InterruptedException e) {
+                        }
+                        authCache.set(new BasicAuthCache());
+                        log.log(Level.WARNING, "winrm returned 401 - retrying now");
+                        return sendRequest(request, ++retry);
                     }
                     log.log(Level.WARNING, "winrm service " + shellId + " unexpected HTTP Response ("
                             + response.getStatusLine().getReasonPhrase() + "): " + EntityUtils.toString(response.getEntity()));
